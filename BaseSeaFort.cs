@@ -1,17 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
-using Server;
-using Server.Commands;
+
 using Server.Items;
 using Server.Mobiles;
 using Server.Network;
-
 
 namespace Server.Multis
 {
@@ -32,12 +24,19 @@ namespace Server.Multis
             if (map == null || map == Map.Internal)
                 return null;
 
-            Sector sector = map.GetSector(loc);
+            var items = map.GetItemsInRange(loc, 0);
 
-            for (int i = 0; i < sector.Items.Count; i++)
+            try
             {
-                if (sector.Items[i] is SeaFortController controller)
-                    return controller;
+                foreach (var item in items)
+                {
+                    if (item is SeaFortController controller)
+                        return controller;
+                }
+            }
+            finally
+            {
+                items.Free();
             }
 
             return null;
@@ -101,7 +100,7 @@ namespace Server.Multis
             {
                 for (int i = 0; i < Addons.Count; i++)
                 {
-                    Addons[i].Delete();
+                    Addons[i]?.Delete();
                 }
             }
         }
@@ -113,14 +112,14 @@ namespace Server.Multis
             writer.Write((int)0);
 
             writer.Write(_SeaFort);
-            if (Addons !=  null)
+            if (Addons != null)
                 writer.Write(Addons.Count);
             else
                 writer.Write(0);
 
-            if (Addons != null && Addons.Count >0)
+            if (Addons != null && Addons.Count > 0)
             {
-                for(int i = 0; i < Addons.Count; i++)
+                for (int i = 0; i < Addons.Count; i++)
                 {
                     writer.Write(Addons[i]);
                 }
@@ -142,7 +141,7 @@ namespace Server.Multis
             int count = reader.ReadInt();
             if (count > 0)
             {
-                for(int i =0;  i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     Item item = reader.ReadItem();
                     Addons.Add(item);
@@ -150,7 +149,6 @@ namespace Server.Multis
             }
         }
     }
-
 
     public abstract class BaseSeaFort : BaseMulti
     {
@@ -177,10 +175,13 @@ namespace Server.Multis
                 {
                     default:
                     case DamageLevel.Pristine:
-                    case DamageLevel.Slightly: return 0;
+                    case DamageLevel.Slightly:
+                    return 0;
                     case DamageLevel.Moderately:
-                    case DamageLevel.Heavily: return 1;
-                    case DamageLevel.Severely: return 2;
+                    case DamageLevel.Heavily:
+                    return 1;
+                    case DamageLevel.Severely:
+                    return 2;
                 }
             }
         }
@@ -207,11 +208,13 @@ namespace Server.Multis
 
         public virtual Point2D ControllerLocation { get { return new Point2D(0, 0); } }
         public virtual Point2D[] Entrances { get; set; }
-        public virtual int ZEntrance {  get { return 5; } }
+        public virtual int ZEntrance { get { return 5; } }
 
         public List<Item> Infos;
 
         public abstract Point3D[] ChestLocations { get; }
+
+        public Mobile Owner { get; set; }
 
         public BaseSeaFort(int itemID)
             : base(itemID)
@@ -222,8 +225,6 @@ namespace Server.Multis
             m_DamageTaken = DamageLevel.Pristine;
             _Controller = new SeaFortController(this);
             Infos = new List<Item>();
-
-
 
             Timer.DelayCall(TimeSpan.FromSeconds(0.5), () =>
             {
@@ -320,12 +321,12 @@ namespace Server.Multis
             if (_Controller == null)
                 return;
 
-            if (_Controller.Addons!= null && _Controller.Addons.Count > 0)
+            if (_Controller.Addons != null && _Controller.Addons.Count > 0)
             {
-                for(int i = 0; i <  _Controller.Addons.Count; i++)
+                for (int i = 0; i < _Controller.Addons.Count; i++)
                 {
                     if (_Controller.Addons[i] != null && _Controller.Addons[i] is SeaFortTeleporter)
-                        _Controller.Addons[i].Visible = true;
+                        ((SeaFortTeleporter)_Controller.Addons[i]).Active = true;
                 }
             }
         }
@@ -335,7 +336,7 @@ namespace Server.Multis
             if (Entrances == null || Entrances.Length == 0 || Controller == null || Controller.Deleted)
                 return;
 
-            for (int i = 0; i < Entrances.Length-1; i++)
+            for (int i = 0; i < Entrances.Length - 1; i++)
             {
                 SeaFortTeleporter entrance = new SeaFortTeleporter(this);
                 Point3D p = new Point3D(X + Entrances[i].X, Y + Entrances[i].Y, Z + ZEntrance);
@@ -406,6 +407,9 @@ namespace Server.Multis
 
             foreach (IEntity e in eable)
             {
+                if (e == this)
+                    continue;
+
                 int x = e.X - p.X + newComponents.Min.X;
                 int y = e.Y - p.Y + newComponents.Min.Y;
 
@@ -464,9 +468,9 @@ namespace Server.Multis
             if (ChestLocations == null)
                 return;
 
-            if (ChestLocations.Length  > 0)
+            if (ChestLocations.Length > 0)
             {
-                for(int i = 0; i <  ChestLocations.Length; i++)
+                for (int i = 0; i < ChestLocations.Length; i++)
                 {
                     BaseTreasureChestMod chest = RandomEnigmaChest();
                     Point3D p = ChestLocations[i];
@@ -507,12 +511,20 @@ namespace Server.Multis
             return false;
         }
 
+        public void BeginSink()
+        {
+            Timer.DelayCall(TimeSpan.FromMinutes(15), () =>
+            {
+                Sink();
+            });
+        }
+
         public void Sink()
         {
-            Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 6, () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 6, () =>
             {
-                this.Z -= 2;
-                for(int i = 0; i < Infos.Count; i++)
+                Z -= 2;
+                for (int i = 0; i < Infos.Count; i++)
                 {
                     Infos[i].Z -= 2;
                 }
@@ -522,11 +534,17 @@ namespace Server.Multis
 
             foreach (Mobile m in eable)
             {
+                if (m == null || m.Deleted)
+                    continue;
+
                 m.PlaySound(0x020);
 
-                if (this.Contains(m))
+                if (m.Alive && !m.IsDeadBondedPet && this.Contains(m))
                 {
-                    m.Kill();
+                    if (m is PlayerMobile || (m is BaseCreature && ((BaseCreature)m).GetMaster() is PlayerMobile))
+                        m.Kill();
+                    else
+                        m.Delete();
                 }
 
                 if (m is PlayerMobile && !m.Alive)
@@ -535,7 +553,7 @@ namespace Server.Multis
             }
             eable.Free();
 
-            Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
             {
                 if (_Controller != null)
                     _Controller.Delete();
@@ -543,7 +561,6 @@ namespace Server.Multis
                     Delete();
             });
         }
-
 
         public override void Serialize(GenericWriter writer)
         {
@@ -585,11 +602,16 @@ namespace Server.Multis
             int count = reader.ReadInt();
             if (count > 0)
             {
-                for(int i = 0; i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     SeaFortInfo info = reader.ReadItem() as SeaFortInfo;
                     Infos.Add(info);
-                }  
+                }
+            }
+
+            if (Owner == null || Owner.Deleted)
+            {
+                Sink();
             }
         }
 
@@ -604,7 +626,7 @@ namespace Server.Multis
 
             if (Infos != null && Infos.Count > 0)
             {
-                for(int i = 0; i < Infos.Count; i++)
+                for (int i = 0; i < Infos.Count; i++)
                 {
                     Infos[i].Delete();
                 }
