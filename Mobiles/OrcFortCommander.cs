@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
 using Server.Items;
 using Server.Misc;
 using Server.Multis;
@@ -11,6 +12,7 @@ namespace Server.Mobiles
     public class OrcFortCommander : BaseCreature
     {
         private DateTime m_NextCrewCheck;
+        private SeaFortController _Controller;
         private BaseSeaFort _Fort;
         private List<Mobile> _Crew;
 
@@ -51,9 +53,11 @@ namespace Server.Mobiles
 
             VirtualArmor = 50;
 
+            CanSwim = true;
+
             PackItem(new Copper(Utility.RandomMinMax(25, 50)));
 
-            SetSpecialAbility(SpecialAbility.PrimalSlam);
+            //     SetSpecialAbility(SpecialAbility.PrimalSlam);
             SetWeaponAbility(WeaponAbility.CrushingBlow);
 
             _Crew = new List<Mobile>();
@@ -111,18 +115,21 @@ namespace Server.Mobiles
         {
             Backpack pack = new Backpack();
             PackItem(pack);
-                
 
             pack.DropItem(new Swab());
             pack.DropItem(new Ramrod());
             pack.DropItem(new Matches(Utility.RandomMinMax(5, 35)));
-            pack.DropItem(new HeavyCannonball(Utility.RandomMinMax(3, 18)));
             pack.DropItem(new LightCannonball(Utility.RandomMinMax(3, 18)));
-            pack.DropItem(new HeavyGrapeshot(Utility.RandomMinMax(3, 18)));
+            pack.DropItem(new LightCannonball(Utility.RandomMinMax(3, 18)));
             pack.DropItem(new LightGrapeshot(Utility.RandomMinMax(3, 18)));
-            pack.DropItem(new HeavyPowderCharge(Utility.RandomMinMax(3, 18)));
-            pack.DropItem(new LightPowderCharge(Utility.RandomMinMax(3, 18)));
+            pack.DropItem(new PowderCharge(Utility.RandomMinMax(3, 18)));
+            pack.DropItem(new PowderCharge(Utility.RandomMinMax(3, 18)));
             pack.DropItem(new FuseCord(Utility.RandomMinMax(3, 18)));
+
+            if (Utility.RandomBool())
+                pack.DropItem(new FlameCannonball(Utility.RandomMinMax(3, 18)));
+            else
+                pack.DropItem(new FrostCannonball(Utility.RandomMinMax(3, 18)));
         }
 
         public override void OnThink()
@@ -160,6 +167,7 @@ namespace Server.Mobiles
             {
                 FortSinkTimer timer = new FortSinkTimer(_Fort);
                 timer.Start();
+                _Fort.BeginSink();
             }
 
             return base.OnBeforeDeath();
@@ -170,9 +178,19 @@ namespace Server.Mobiles
             base.Serialize(writer);
             writer.Write((int)0);
 
-            writer.Write(_Crew.Count);
-            foreach (Mobile mob in _Crew)
-                writer.Write(mob);
+            writer.Write(_Controller);
+
+            if (_Crew != null && _Crew.Count > 0)
+            {
+                writer.Write(_Crew.Count);
+                if (_Crew.Count > 0)
+                {
+                    foreach (Mobile mob in _Crew)
+                        writer.Write(mob);
+                }
+            }
+            else
+                writer.Write(0);
         }
 
         public override void Deserialize(GenericReader reader)
@@ -180,22 +198,32 @@ namespace Server.Mobiles
             base.Deserialize(reader);
             int version = reader.ReadInt();
 
+            _Controller = reader.ReadItem() as SeaFortController;
+
+            if (_Controller != null && _Controller.SeaFort != null)
+                _Fort = _Controller.SeaFort;
+
+            _Crew = new List<Mobile>();
             int count = reader.ReadInt();
-            for (int i = 0; i < count; i++)
+            if (count > 0)
             {
-                Mobile mob = reader.ReadMobile() as Mobile;
-                if (mob != null && !mob.Deleted && mob.Alive)
+                for (int i = 0; i < count; i++)
+                {
+                    Mobile mob = reader.ReadMobile();
                     _Crew.Add(mob);
+                }
             }
 
             if (_Fort != null)
             {
+
                 Timer.DelayCall(TimeSpan.FromSeconds(30), CheckCrew);
             }
         }
 
         public void SpawnFort()
         {
+            CanSwim = true;
             BaseSeaFort fort;
 
             fort = GetFort();
@@ -206,45 +234,45 @@ namespace Server.Mobiles
             // Move this sucka out of the way!
             Internalize();
 
-            if (fort.CanFit(p, map, fort.ItemID))
+            fort.MoveToWorld(p, map);
+            _Fort = fort;
+            fort.Owner = this;
+            if (fort.Controller != null)
+                _Controller = fort.Controller;
+
+            MoveToWorld(new Point3D(p.X - 2, p.Y + 1, fort.ZEntrance + 1), map);
+
+            int crewCount = GetCrewSize(fort);
+
+            for (int j = 0; j < crewCount; j++)
             {
-                fort.MoveToWorld(p, map);
-                _Fort = fort;
+                Mobile crew = new OrcRaider();
 
-                MoveToWorld(new Point3D(p.X - 2, p.Y + 1, fort.ZEntrance + 1), map);
-
-                int crewCount = GetCrewSize(fort);
-
-                for (int j = 0; j < crewCount; j++)
+                if (crew != null)
                 {
-                    Mobile crew = new OrcRaider();
-
-                    if (crew != null)
-                    {
-                        AddToCrew(crew);
-                        crew.MoveToWorld(new Point3D(fort.X + Utility.RandomList(-1, 1), fort.Y + Utility.RandomList(-1, 0, 1), 1), map);
-                    }
+                    AddToCrew(crew);
+                    crew.MoveToWorld(new Point3D(fort.X + Utility.RandomList(-1, 1), fort.Y + Utility.RandomList(-1, 0, 1), 1), map);
                 }
+            }
 
-                return;
-            }
-            else
-            {
-                fort.Delete();
-                Delete();
-            }
+            return;
         }
 
         public BaseSeaFort GetFort()
         {
-            switch(Utility.Random(5))
+            switch (Utility.Random(5))
             {
                 default:
-                case 0: return new ShipSeaFort();
-                case 1: return new SmallSeaFort();
-                case 2: return new MediumSeaFort();
-                case 3: return new LargeSeaFort();
-                case 4: return new SeaFortStronghold();
+                case 0:
+                return new ShipSeaFort();
+                case 1:
+                return new SmallSeaFort();
+                case 2:
+                return new MediumSeaFort();
+                case 3:
+                return new LargeSeaFort();
+                case 4:
+                return new SeaFortStronghold();
             }
         }
 
@@ -252,7 +280,6 @@ namespace Server.Mobiles
         {
             if (_Crew == null)
                 _Crew = new List<Mobile>();
-
 
             if (!_Crew.Contains(mob))
                 _Crew.Add(mob);
@@ -271,7 +298,7 @@ namespace Server.Mobiles
             {
                 if (!_Fort.Contains(crewman))
                 {
-                    crewman.MoveToWorld(new Point3D(_Fort.X + Utility.RandomList(-1, 1), _Fort.Y + Utility.RandomList(-1, 0, 1), _Fort.Z), this.Map);
+                    crewman.MoveToWorld(new Point3D(_Fort.X + Utility.RandomList(-1, 1), _Fort.Y + Utility.RandomList(-1, 0, 1), _Fort.Z), Map);
                 }
             }
 
@@ -305,7 +332,7 @@ namespace Server.Mobiles
             : base(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
         {
             Fort = fort;
-            SinkTime = DateTime.UtcNow + TimeSpan.FromMinutes(5);
+            SinkTime = DateTime.UtcNow + TimeSpan.FromMinutes(15);
         }
 
         protected override void OnTick()
@@ -313,13 +340,12 @@ namespace Server.Mobiles
             if (Fort == null)
                 Stop();
 
-
             if (SinkTime <= DateTime.UtcNow)
             {
-                Fort.Sink();
+                //Fort.Sink();
                 Stop();
             }
-            else if(SinkTime <= DateTime.UtcNow + TimeSpan.FromSeconds(35))
+            else if (SinkTime <= DateTime.UtcNow + TimeSpan.FromSeconds(35))
             {
                 IPooledEnumerable eable = Fort.GetMobilesInRange(20);
 
