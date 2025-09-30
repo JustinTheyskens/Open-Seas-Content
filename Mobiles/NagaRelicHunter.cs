@@ -1,11 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 using Server.Items;
 using Server.Multis;
-using Ultima;
 
 namespace Server.Mobiles
 {
@@ -17,7 +14,7 @@ namespace Server.Mobiles
 
         [Constructable]
         public NagaRelicHunter()
-            : base(AIType.AI_Melee, FightMode.Closest, 10, 1, .2, .4)
+            : base(AIType.AI_Spellweaving, FightMode.Closest, 10, 1, .2, .4)
         {
             Name = "a naga relic hunter";
 
@@ -26,7 +23,7 @@ namespace Server.Mobiles
                 Body = 1633;
                 ChangeAIType(AIType.AI_Spellweaving);
                 BaseSoundID = 644;
-                //thsi.SpellHue = 1365;
+                SpellHue = 1365;
 
                 SetStr(416, 505);
                 SetDex(116, 135);
@@ -76,7 +73,7 @@ namespace Server.Mobiles
                 SetSkill(SkillName.Wrestling, 101.1, 120.0);
                 SetSkill(SkillName.Bushido, 100.1, 120.0);
                 SetSkill(SkillName.Parry, 67.1, 87.0);
-            }  
+            }
 
             SetDamageType(ResistanceType.Physical, 20);
             SetDamageType(ResistanceType.Cold, 60);
@@ -85,6 +82,7 @@ namespace Server.Mobiles
             _Crew = new List<Mobile>();
             Fame = 22000;
             Karma = -22000;
+            CanSwim = true;
 
             PackItem(new Copper(Utility.RandomMinMax(25, 50)));
             Timer.DelayCall(TimeSpan.FromSeconds(0.25), () =>
@@ -92,6 +90,14 @@ namespace Server.Mobiles
                 SpawnShrine();
             });
 
+        }
+
+        public override void GenerateLoot()
+        {
+            AddLoot(LootPack.AosFilthyRich, 2);
+            AddLoot(LootPack.Average, 2);
+            AddLoot(LootPack.Potions);
+            AddLoot(LootPack.MedScrolls, 3);
         }
 
         private DateTime NextRanged;
@@ -132,17 +138,21 @@ namespace Server.Mobiles
 
         public int GetBody()
         {
-            switch(Utility.Random(3))
+            switch (Utility.Random(3))
             {
                 default:
-                case 0: return 1632;
-                case 1: return 1633;
-                case 2: return 1615;
+                case 0:
+                return 1632;
+                case 1:
+                return 1633;
+                case 2:
+                return 1615;
             }
         }
 
         public void SpawnShrine()
         {
+            CanSwim = false;
             BaseSeaShrine shrine;
 
             shrine = GetShrine();
@@ -153,44 +163,52 @@ namespace Server.Mobiles
             // Move this sucka out of the way!
             Internalize();
 
+            shrine.MoveToWorld(p, map);
+            _Shrine = shrine;
+
+            MoveToWorld(new Point3D(p.X - 2, p.Y + 1, shrine.Z + 11), map);
+
+            int crewCount = Utility.RandomMinMax(2, 3);
+
+            for (int j = 0; j < crewCount; j++)
+            {
+                Mobile crew = new NagaRaider();
+
+                if (crew != null)
+                {
+                    AddToCrew(crew);
+                    crew.MoveToWorld(new Point3D(shrine.X + Utility.RandomList(-1, 1), shrine.Y + Utility.RandomList(-1, 0, 1), 1), map);
+                }
+            }
+
+            return;
+
+            /*
             if (shrine.CanFit(p, map, shrine.ItemID))
             {
-                shrine.MoveToWorld(p, map);
-                _Shrine = shrine;
 
-                MoveToWorld(new Point3D(p.X - 2, p.Y + 1, shrine.Z + 11), map);
-
-                int crewCount = Utility.RandomMinMax(2, 3);
-
-                for (int j = 0; j < crewCount; j++)
-                {
-                    Mobile crew = new NagaRaider();
-
-                    if (crew != null)
-                    {
-                        AddToCrew(crew);
-                        crew.MoveToWorld(new Point3D(shrine.X + Utility.RandomList(-1, 1), shrine.Y + Utility.RandomList(-1, 0, 1), 1), map);
-                    }
-                }
-
-                return;
             }
             else
             {
                 shrine.Delete();
                 Delete();
             }
+            */
         }
 
         public BaseSeaShrine GetShrine()
         {
-            switch(Utility.Random(4))
+            switch (Utility.Random(4))
             {
                 default:
-                case 0: return new SeaShrineArcane();
-                case 1: return new SeaShrineHoly();
-                case 2: return new SeaShrineKing();
-                case 3: return new SeaShrineWarrior();
+                case 0:
+                return new SeaShrineArcane();
+                case 1:
+                return new SeaShrineHoly();
+                case 2:
+                return new SeaShrineKing();
+                case 3:
+                return new SeaShrineWarrior();
             }
         }
 
@@ -198,7 +216,6 @@ namespace Server.Mobiles
         {
             if (_Crew == null)
                 _Crew = new List<Mobile>();
-
 
             if (!_Crew.Contains(mob))
                 _Crew.Add(mob);
@@ -216,20 +233,32 @@ namespace Server.Mobiles
             return base.OnBeforeDeath();
         }
 
-        public NagaRelicHunter (Serial serial)
-            : base(serial) { }
+        public override void OnDeath(Container c)
+        {
+            base.OnDeath(c);
 
+            if (Utility.RandomDouble() < 0.05)
+                c.DropItem(new AncientNagaRelic());
+        }
+
+        public NagaRelicHunter(Serial serial)
+            : base(serial) { }
 
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write((int)0);
+            writer.Write((int)1);
+
+            writer.Write(_Shrine);
         }
 
         public override void Deserialize(GenericReader reader)
         {
             base.Deserialize(reader);
             int version = reader.ReadInt();
+
+            if (version > 0)
+                _Shrine = reader.ReadItem() as BaseSeaShrine;
         }
     }
 }

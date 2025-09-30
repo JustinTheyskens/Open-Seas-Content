@@ -3,35 +3,36 @@ using Server.Multis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Items
 {
     public class SeaShrineTeleporter : Item
     {
-        public Point3D Destination;
         private BaseSeaShrine Shrine;
+        private InternalTimer Timer;
 
         [Constructable]
         public SeaShrineTeleporter(BaseSeaShrine shrine, int id)
+            : this(shrine, id, 0)
+        {
+        }
+
+        [Constructable]
+        public SeaShrineTeleporter(BaseSeaShrine shrine, int id, int hue)
             : base(id)
         {
+            Name = "Mystical Symbol";
             Shrine = shrine;
-            Name = "Ruins";
+            Hue = hue;
             Movable = false;
+            Timer = new InternalTimer(this);
+            Timer.Start();
         }
 
         public SeaShrineTeleporter(Serial serial)
             : base(serial) { }
 
-        public override void Serialize(GenericWriter writer)
-        {
-            base.Serialize(writer);
 
-            writer.Write((int)0); // version
-        }
 
         public override void OnDoubleClickDead(Mobile from)
         {
@@ -50,15 +51,20 @@ namespace Server.Items
 
             if (from.InRange(GetWorldLocation(), 8) && !Shrine.Contains(from) && !from.InRange(Shrine.GetWorldLocation(), 3))
             {
-                Point3D p;
-                if (Destination != Point3D.Zero)
-                    p = Destination;
-                else
-                    p = new Point3D(X, Y, Z + 3);
+                Point3D p = new Point3D(X, Y, Z + 3);
 
                 BaseCreature.TeleportPets(from, p, Map);
                 from.Location = p;
             }
+        }
+
+        public override void Serialize(GenericWriter writer)
+        {
+            base.Serialize(writer);
+
+            writer.Write((int)1); // version
+
+            writer.Write(Shrine);
         }
 
         public override void Deserialize(GenericReader reader)
@@ -66,6 +72,33 @@ namespace Server.Items
             base.Deserialize(reader);
 
             int version = reader.ReadInt();
+
+            Timer = new InternalTimer(this);
+            Timer.Start();
+
+            if (version > 0)
+                Shrine = reader.ReadItem() as BaseSeaShrine;
+        }
+
+        private class InternalTimer : Timer
+        {
+            private Item Tele;
+            public InternalTimer(Item tele)
+                : base(TimeSpan.FromSeconds(2.0), TimeSpan.FromSeconds(2.0))
+            {
+                Tele = tele;
+            }
+
+            protected override void OnTick()
+            {
+                if (Tele == null || Tele.Deleted)
+                {
+                    Stop();
+                    return;
+                }
+
+                Effects.SendLocationEffect(Tele.Location, Tele.Map, 0x376A, 30);
+            }
         }
     }
 }

@@ -1,22 +1,34 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Server.Items;
 using Server.Mobiles;
+using Server.Commands;
 
 namespace Server.Multis
 {
     public class BaseSeaShrine : BaseMulti
     {
+
+        public static List<BaseSeaShrine> SeaShrines = new List<BaseSeaShrine>();
+        public static void Initialize()
+        {
+            CommandSystem.Register("SeaShrines", AccessLevel.Administrator, new CommandEventHandler(Gump_OnCommand));
+        }
+
+        public static void Gump_OnCommand(CommandEventArgs e)
+        {
+            Mobile m = e.Mobile;
+            if (!m.HasGump(typeof(Gumps.SeaShrineAdminGump)))
+                m.SendGump(new Gumps.SeaShrineAdminGump(m));
+        }
+
         private bool _Active;
         public override bool Decays => _Active;
         public override bool HandlesOnMovement => _Active ? true : false;
         public bool Active
         {
-            get {  return _Active;}
+            get { return _Active; }
             set { _Active = value; }
         }
 
@@ -24,10 +36,16 @@ namespace Server.Multis
         public List<Item> Addons = new List<Item>();
 
         public BaseSeaShrine(int id)
-            : base(id) { }
+            : base(id)
+        {
+            SeaShrines.Add(this);
+        }
 
         public BaseSeaShrine(Serial serial)
-            : base(serial) { }
+            : base(serial)
+        {
+            SeaShrines.Add(this);
+        }
 
         public override void OnMovement(Mobile m, Point3D oldLocation)
         {
@@ -39,12 +57,11 @@ namespace Server.Multis
         }
 
         public void DoBless()
-        {  
+        {
             ArrayList list = new ArrayList();
             IPooledEnumerable eable = GetMobilesInRange(15);
             int amount = 20;
 
-            //FixedParticles(0xBC6C, 10, 15, 5018, EffectLayer.LeftFoot);
             foreach (Mobile m in eable)
             {
                 if (m is PlayerMobile && !IsBlessed(m))
@@ -61,22 +78,27 @@ namespace Server.Multis
             eable.Free();
         }
 
-
         public void Activate()
         {
             _Active = true;
             SinkTimer timer = new SinkTimer(this);
             timer.Start();
+            BeginSink();
             DoBuffEffects();
         }
 
         public void AddTeleporter(int id, Point3D position)
         {
-            SeaShrineTeleporter teleporter = new SeaShrineTeleporter(this, id);
+            AddTeleporter(id, position, 0);
+        }
+
+        public void AddTeleporter(int id, Point3D position, int hue)
+        {
+            SeaShrineTeleporter teleporter = new SeaShrineTeleporter(this, id, hue);
             Addons.Add(teleporter);
             Point3D location = new Point3D(X + position.X, Y + position.Y, Z + position.Z);
             Timer.DelayCall(TimeSpan.FromSeconds(0.2), () =>
-            {   
+            {
                 teleporter.MoveToWorld(location, Map);
             });
         }
@@ -141,6 +163,9 @@ namespace Server.Multis
 
             foreach (IEntity e in eable)
             {
+                if (e == this)
+                    continue;
+
                 int x = e.X - p.X + newComponents.Min.X;
                 int y = e.Y - p.Y + newComponents.Min.Y;
 
@@ -173,7 +198,7 @@ namespace Server.Multis
         {
             base.Serialize(writer);
 
-            writer.Write((int)0); // version
+            writer.Write((int)1); // version
 
             writer.Write(Addons.Count);
 
@@ -184,19 +209,17 @@ namespace Server.Multis
                     writer.Write(Addons[i]);
                 }
             }
+
+            writer.Write(_Active);
         }
 
         public override void OnAfterDelete()
         {
             base.OnAfterDelete();
 
-            if (Addons != null)
-            {
-                for(int i = 0; i < Addons.Count; ++i)
-                {
-                    Addons[i].Delete();
-                }
-            }
+            SeaShrines.Remove(this);
+
+            ColUtility.SafeDelete(Addons);
         }
 
         public override void Deserialize(GenericReader reader)
@@ -209,22 +232,44 @@ namespace Server.Multis
             int count = reader.ReadInt();
             if (count > 0)
             {
-                for(int i  = 0; i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     Item item = reader.ReadItem();
                     Addons.Add(item);
                 }
             }
+
+            if (version > 0) // Ensure compatibility with future versions
+            {
+                bool active = reader.ReadBool(); // Safely read the _Active value
+                _Active = active;
+                if (active)
+                {
+                    Sink();
+                }
+            }
+            else
+            {
+                Sink();
+            }
+        }
+
+        public void BeginSink()
+        {
+            Timer.DelayCall(TimeSpan.FromMinutes(20), () =>
+            {
+                Sink();
+            });
         }
 
         public void Sink()
         {
-            Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 4, () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 4, () =>
             {
-                this.Z -= 2;
+                Z -= 2;
                 if (Addons != null && Addons.Count > 0)
                 {
-                    for (int i = 0;i < Addons.Count; ++i)
+                    for (int i = 0; i < Addons.Count; ++i)
                     {
                         Addons[i].Z -= 2;
                     }
@@ -237,7 +282,7 @@ namespace Server.Multis
             {
                 m.PlaySound(0x020);
 
-                if (this.Contains(m))
+                if (Contains(m))
                     m.Kill();
 
                 if (m is PlayerMobile && !m.Alive)
@@ -246,7 +291,7 @@ namespace Server.Multis
             }
             eable.Free();
 
-            Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
             {
                 Delete();
             });
@@ -257,10 +302,10 @@ namespace Server.Multis
             private BaseSeaShrine Shrine;
             private DateTime SinkTime;
             public SinkTimer(BaseSeaShrine shrine)
-                :base(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
+                : base(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
             {
                 Shrine = shrine;
-                SinkTime = DateTime.UtcNow + TimeSpan.FromMinutes(10);
+                SinkTime = DateTime.UtcNow + TimeSpan.FromMinutes(20);
             }
 
             protected override void OnTick()
@@ -268,10 +313,9 @@ namespace Server.Multis
                 if (Shrine == null)
                     Stop();
 
-
                 if (SinkTime <= DateTime.UtcNow)
                 {
-                    Shrine.Sink();
+                    //Shrine.Sink();
                     Stop();
                 }
                 else if (SinkTime <= DateTime.UtcNow + TimeSpan.FromSeconds(35))
@@ -290,12 +334,10 @@ namespace Server.Multis
         #region static methods
         private static Dictionary<Mobile, InternalTimer> _Table;
 
-
         public static bool IsBlessed(Mobile m)
         {
             return _Table != null && _Table.ContainsKey(m);
         }
-
 
         public static void AddBless(Mobile m, TimeSpan duration)
         {
@@ -327,7 +369,7 @@ namespace Server.Multis
             SeaShrineBuffEffect buff = new SeaShrineBuffEffect(0x373A);
             Timer.DelayCall(TimeSpan.FromSeconds(0.2), () =>
             {
-                buff.MoveToWorld(new Point3D( X - 1, Y, Z + 10), Map);
+                buff.MoveToWorld(new Point3D(X - 1, Y, Z + 10), Map);
                 Addons.Add(buff);
             });
         }
