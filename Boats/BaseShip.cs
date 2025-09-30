@@ -1,19 +1,9 @@
-using Server.Engines.Blackthorn;
-using Server.Engines.Plants;
-using Server.Engines.Quests.Haven;
-using Server.Engines.Shadowguard;
-using Server.Engines.TreasuresOfKotlCity;
-using Server.Items;
-using Server.Mobiles;
-using Server.SkillHandlers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Server.Gumps;
-using System.Drawing;
+
+using Server.Items;
+using Server.Mobiles;
 
 // Remember to have the edited version of Hold.cs, Plank.cs & Tillerman.cs
 
@@ -29,7 +19,7 @@ namespace Server.Multis
         private ShipSecurityEntry m_SecurityEntry;
         public List<Item> Fixtures { get; set; } = new List<Item>();
         public List<Item> Cannons { get; set; }
-        public List<Mobile> Crew {  get; set; }
+        public List<Mobile> Crew { get; set; }
 
         private Dictionary<Item, Item> _InternalCannon;
 
@@ -39,7 +29,10 @@ namespace Server.Multis
             get
             {
                 if (m_SecurityEntry == null)
+                {
                     m_SecurityEntry = new ShipSecurityEntry(this);
+                }
+
                 return m_SecurityEntry;
             }
             set
@@ -49,46 +42,77 @@ namespace Server.Multis
             }
         }
 
-        public override int MaxHits { get { return GetMaxHits(); } }
-        public virtual int MaxCannons { get { return 0; } }
+        public override int MaxHits => GetMaxHits();
+        public virtual int MaxCannons => 0;
 
-        public virtual int StartingMaxCannons {  get { return 0; } }  
-        public virtual int CaptiveOffset { get { return 0; } }
-        public virtual double CannonDamageMod { get { return 1.0; } }
+        public virtual int StartingMaxCannons => 0;
+        public virtual int CaptiveOffset => 0;
+        public virtual double CannonDamageMod => 1.0;
 
         public abstract Point2D[] CannonLocations { get; }
 
         #region upgrades
+
+        [CommandProperty(AccessLevel.GameMaster)]
         public bool UpgradedHold { get; set; }
+
+        [CommandProperty(AccessLevel.GameMaster)]
         public int CurrentMaxCannons { get; set; }
+
+        [CommandProperty(AccessLevel.GameMaster)]
         public bool UpgradedHull { get; set; }
+
+        [CommandProperty(AccessLevel.GameMaster)]
         public bool BannerUpgrade { get; set; }
+
         [CommandProperty(AccessLevel.GameMaster)]
         public ShipBanner Banner { get; set; }
+
         #endregion
 
-        public BaseShip(Direction direction) : base(direction, false)
+        public BaseShip(Direction direction)
+            : base(direction, false)
         {
-            TillerMan = new TillerMan(this);
             CurrentMaxCannons = StartingMaxCannons;
-            
-            PPlank = new Plank(this, PlankSide.Port, 0);
-            SPlank = new Plank(this, PlankSide.Starboard, 0);
+        }
 
-            PPlank.MoveToWorld(new Point3D(X + PortOffset.X, Y + PortOffset.Y, Z), Map);
-            SPlank.MoveToWorld(new Point3D(X + StarboardOffset.X, Y + StarboardOffset.Y, Z), Map);
+        protected override void InitComponents(bool isClassic)
+        {
+            base.InitComponents(isClassic);
 
-            Hold = new Hold(this);
+            if (!isClassic)
+            {
+                TillerMan = new TillerMan(this);
 
-            UpdateComponents();
+                PPlank = new Plank(this, PlankSide.Port, 0);
+                SPlank = new Plank(this, PlankSide.Starboard, 0);
+
+                PPlank.MoveToWorld(new Point3D(X + PortOffset.X, Y + PortOffset.Y, Z), Map);
+                SPlank.MoveToWorld(new Point3D(X + StarboardOffset.X, Y + StarboardOffset.Y, Z), Map);
+
+                Hold = new Hold(this);
+            }
         }
 
         public int GetMaxHits()
         {
             if (UpgradedHull == true)
+            {
                 return 35000;
+            }
             else
+            {
                 return 25000;
+            }
+        }
+
+        public void UpgradeHold()
+        {
+            if (Hold == null)
+                return;
+
+            Hold.Upgrade();
+            UpgradedHold = true;
         }
 
         public void PaintShip(int hue)
@@ -96,18 +120,29 @@ namespace Server.Multis
             if (TillerMan != null)
             {
                 if (TillerMan is Mobile)
+                {
                     ((Mobile)TillerMan).Hue = hue;
+                }
                 else if (TillerMan is Item)
+                {
                     ((Item)TillerMan).Hue = hue;
+                }
             }
 
             if (PPlank != null)
+            {
                 PPlank.Hue = hue;
+            }
+
             if (SPlank != null)
-                SPlank.Hue = hue; ;
+            {
+                SPlank.Hue = hue;
+            };
 
             if (Hold != null)
+            {
                 Hold.Hue = hue;
+            }
 
             Hue = hue;
         }
@@ -122,12 +157,11 @@ namespace Server.Multis
             Cannons.Add(item);
         }
 
-
         public void RemoveCannon(Item cannon)
         {
             if (Cannons != null && Cannons.Contains(cannon))
             {
-                Cannons.Remove(cannon);
+                _ = Cannons.Remove(cannon);
             }
         }
 
@@ -137,9 +171,9 @@ namespace Server.Multis
 
             if (_InternalCannon != null)
             {
-                foreach (KeyValuePair<Item, Item> kvp in _InternalCannon)
+                foreach (var kvp in _InternalCannon)
                 {
-                    Point3D p = new Point3D(kvp.Value.X, kvp.Value.Y, kvp.Value.Z + TileData.ItemTable[kvp.Value.ItemID & TileData.MaxItemValue].CalcHeight);
+                    var p = new Point3D(kvp.Value.X, kvp.Value.Y, kvp.Value.Z + TileData.ItemTable[kvp.Value.ItemID & TileData.MaxItemValue].CalcHeight);
 
                     kvp.Key.MoveToWorld(p, kvp.Value.Map);
                 }
@@ -155,11 +189,13 @@ namespace Server.Multis
         public override void SetFacingComponents(Direction newDirection, Direction oldDirection, bool ignoreLastDirection)
         {
             if (oldDirection == newDirection && !ignoreLastDirection)
+            {
                 return;
+            }
 
             var mcl = MultiData.GetComponents(ItemID);
 
-            foreach (var mte in mcl.List.Where(e => (TileFlag)e.m_Flags == TileFlag.None))
+            foreach (var mte in mcl.List.Where(e => e.m_Flags == TileFlag.None))
             {
                 foreach (var fixture in Fixtures.Where(f => f.X - X == mte.m_OffsetX && f.Y - Y == mte.m_OffsetY && f.Z - Z == mte.m_OffsetZ))
                 {
@@ -183,14 +219,16 @@ namespace Server.Multis
         {
             if (Fixtures != null && Fixtures.Contains(item))
             {
-                Fixtures.Remove(item);
+                _ = Fixtures.Remove(item);
             }
         }
 
         public override bool Contains(int x, int y)
         {
             if (base.Contains(x, y))
+            {
                 return true;
+            }
 
             return Fixtures.Any(f => f.X == x && f.Y == y);
         }
@@ -211,50 +249,69 @@ namespace Server.Multis
             switch (direction)
             {
                 default:
-                case Direction.South: return 0;
-                case Direction.West: return 1;
-                case Direction.North: return 2;
-                case Direction.East: return 3;
+                case Direction.South:
+                return 0;
+                case Direction.West:
+                return 1;
+                case Direction.North:
+                return 2;
+                case Direction.East:
+                return 3;
             }
         }
 
         public void UpdateCannonID(Item cannon)
         {
             if (cannon == null)
+            {
                 return;
+            }
 
-            int type = cannon is SmallShipCannon ? 0 : 1;
+            var type = cannon is SmallShipCannon ? 0 : 1;
 
             switch (Facing)
             {
                 default:
                 case Direction.South:
                 case Direction.North:
+                {
+                    if (cannon.X == X)
                     {
-                        if (cannon.X == X)
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Facing)][type];
-                        else if (cannon.X < X)
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Direction.West)][type];
-                        else
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Direction.East)][type];
-                        break;
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Facing)][type];
                     }
+                    else if (cannon.X < X)
+                    {
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Direction.West)][type];
+                    }
+                    else
+                    {
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Direction.East)][type];
+                    }
+
+                    break;
+                }
                 case Direction.West:
                 case Direction.East:
+                {
+                    if (cannon.Y == Y)
                     {
-                        if (cannon.Y == Y)
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Facing)][type];
-                        else if (cannon.Y < Y)
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Direction.North)][type];
-                        else
-                            cannon.ItemID = m_CannonIDs[GetValueForDirection(Direction.South)][type];
-                        break;
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Facing)][type];
                     }
+                    else if (cannon.Y < Y)
+                    {
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Direction.North)][type];
+                    }
+                    else
+                    {
+                        cannon.ItemID = CannonIDs[GetValueForDirection(Direction.South)][type];
+                    }
+
+                    break;
+                }
             }
         }
 
-        public static int[][] CannonIDs { get { return m_CannonIDs; } }
-        private static int[][] m_CannonIDs = new int[][]
+        public static int[][] CannonIDs { get; } = new int[][]
         { 
                       //Light  Heavy, Blunder, Pumpkin
             new int[] { 0xA7CD, 0xA7C9, 41664, 41979 }, //South
@@ -271,10 +328,14 @@ namespace Server.Multis
         public SecurityLevel GetSecurityLevel(Mobile from)
         {
             if (m_SecurityEntry == null)
+            {
                 m_SecurityEntry = new ShipSecurityEntry(this);
+            }
 
             if (from.AccessLevel > AccessLevel.Player || IsOwner(from))
+            {
                 return SecurityLevel.Captain;
+            }
 
             return m_SecurityEntry.GetEffectiveLevel(from);
         }
@@ -282,7 +343,9 @@ namespace Server.Multis
         public bool IsPublic()
         {
             if (m_SecurityEntry == null)
+            {
                 m_SecurityEntry = new ShipSecurityEntry(this);
+            }
 
             return m_SecurityEntry.IsPublic;
         }
@@ -295,7 +358,9 @@ namespace Server.Multis
         public override bool HasAccess(Mobile from)
         {
             if (Owner == null || (Scuttled && IsEnemy(from)) || (Owner is BaseCreature && !Owner.Alive))
+            {
                 return true;
+            }
 
             return GetSecurityLevel(from) > SecurityLevel.Denied;
         }
@@ -303,20 +368,21 @@ namespace Server.Multis
         public void AddCrewman(Mobile m)
         {
             if (m == null)
+            {
                 return;
+            }
 
             if (!Crew.Contains(m))
+            {
                 Crew.Add(m);
+            }
         }
 
         public bool TryAddCannon(Mobile from, Point3D pnt, NewShipCannonDeed deed, bool force = false)
         {
             if (!IsNearLandOrDocks(this) && !force)
             {
-                if (from != null)
-                {
-                    from.SendLocalizedMessage(1116076); // The ship must be near shore or a sea market to deploy this weapon.
-                }
+                from?.SendLocalizedMessage(1116076); // The ship must be near shore or a sea market to deploy this weapon.
             }
             else
             {
@@ -326,14 +392,14 @@ namespace Server.Multis
                 {
                     default:
                     case CannonPower.Light:
-                        cannon = new SmallShipCannon(this);
-                        break;
+                    cannon = new SmallShipCannon(this);
+                    break;
                     case CannonPower.Heavy:
-                        cannon = new LargeShipCannon(this);
-                        break;
+                    cannon = new LargeShipCannon(this);
+                    break;
                     case CannonPower.Massive:
-                            cannon = new PowerfulShipCannon(this);
-                        break;
+                    cannon = new PowerfulShipCannon(this);
+                    break;
                 }
 
                 return TryAddCannon(from, pnt, cannon, deed);
@@ -351,12 +417,12 @@ namespace Server.Multis
 
             if (Owner == from)
             {
-                Point2D d2 = CannonLocations[0];
+                var d2 = CannonLocations[0];
                 if (Cannons != null)
                 {
                     if (Cannons.Count < CurrentMaxCannons)
                     {
-                        int count = Cannons.Count;
+                        var count = Cannons.Count;
                         d2 = CannonLocations[count];
                     }
                     else
@@ -366,7 +432,7 @@ namespace Server.Multis
                     }
                 }
 
-                Point3D point = GetRotatedLocation( d2.X, d2.Y);
+                var point = GetRotatedLocation(d2.X, d2.Y);
                 ((Item)cannon).MoveToWorld(point, Map);
                 AddCannon((Item)cannon);
                 UpdateCannonID((Item)cannon);
@@ -379,7 +445,7 @@ namespace Server.Multis
 
                 if (from != null && from.NetState != null)
                 {
-                    Timer.DelayCall(() =>
+                    _ = Timer.DelayCall(() =>
                     {
                         from.ClearScreen();
                         from.SendEverything();
@@ -400,63 +466,73 @@ namespace Server.Multis
 
         public bool AddBanner(Mobile from, ShipBannerDeed deed)
         {
-            if (from == null )
+            if (from == null)
+            {
                 return false;
+            }
 
             if (from == Owner)
             {
                 if (Banner != null)
+                {
                     RemoveBanner();
+                }
 
-                Point2D location = new Point2D(0, -1);
-                Point3D loc = GetRotatedLocation(location.X, location.Y);
-                Point3D pnt = new Point3D(loc.X, loc.Y, loc.Z + 5);
+                var location = new Point2D(0, -1);
+                var loc = GetRotatedLocation(location.X, location.Y);
+                var pnt = new Point3D(loc.X, loc.Y, loc.Z + 5);
 
                 IShipBanner banner;
-                switch(deed.BannerType)
+                switch (deed.BannerType)
                 {
                     default:
                     case ShipBannerType.UO:
-                        banner = new UOShipBanner(this);
-                        break;
+                    banner = new UOShipBanner(this);
+                    break;
                     case ShipBannerType.Tree:
-                        banner = new TreeShipBanner(this);
-                        break;
+                    banner = new TreeShipBanner(this);
+                    break;
                     case ShipBannerType.Star:
-                        banner = new StarShipBanner(this);
-                        break;
+                    banner = new StarShipBanner(this);
+                    break;
                     case ShipBannerType.SeaHorse:
-                        banner = new SeaHorseShipBanner(this);
-                        break;
+                    banner = new SeaHorseShipBanner(this);
+                    break;
                     case ShipBannerType.Flower:
-                        banner = new FlowerShipBanner(this);
-                        break;
+                    banner = new FlowerShipBanner(this);
+                    break;
                     case ShipBannerType.Sun:
-                        banner = new SunShipBanner(this);
-                        break;
+                    banner = new SunShipBanner(this);
+                    break;
                     case ShipBannerType.Pentagram:
-                        banner = new PentagramShipBanner(this);
-                        break;
+                    banner = new PentagramShipBanner(this);
+                    break;
                     case ShipBannerType.Riot:
-                        banner = new TreeShipBanner(this);
-                        break;
+                    banner = new TreeShipBanner(this);
+                    break;
                 }
+
                 return AddBanner(from, pnt, banner, deed);
             }
+
             return false;
         }
 
         public bool AddBanner(Mobile from, Point3D loc, IShipBanner banner, ShipBannerDeed deed)
         {
-            if (banner == null )
+            if (banner == null)
+            {
                 return false;
+            }
 
             if (Owner == from)
             {
                 ((Item)banner).MoveToWorld(loc, Map);
-                this.Banner = ((Item)banner) as ShipBanner;
+                Banner = ((Item)banner) as ShipBanner;
                 if (((ShipBanner)banner).ZSurface > 0)
+                {
                     ((Item)banner).MoveToWorld(new Point3D(loc.X, loc.Y, loc.Z + ((ShipBanner)banner).ZSurface), Map);
+                }
 
                 UpdateBannerID();
                 return true;
@@ -480,33 +556,38 @@ namespace Server.Multis
         public void UpdateBannerID()
         {
             if (Banner == null)
+            {
                 return;
+            }
 
-            int type = Banner is PentagramShipBanner ? 6 : Banner is SunShipBanner ? 5 :
+            var type = Banner is PentagramShipBanner ? 6 : Banner is SunShipBanner ? 5 :
                 Banner is FlowerShipBanner ? 4 : Banner is SeaHorseShipBanner ? 3 :
                 Banner is StarShipBanner ? 2 : Banner is TreeShipBanner ? 1 : 0;
-
 
             switch (Facing)
             {
                 default:
                 case Direction.South:
-                    Banner.ItemID = ShipBanner.BannerIDs[0][type]; break;
+                Banner.ItemID = ShipBanner.BannerIDs[0][type];
+                break;
                 case Direction.North:
-                    Banner.ItemID = ShipBanner.BannerIDs[2][type]; break;
+                Banner.ItemID = ShipBanner.BannerIDs[2][type];
+                break;
                 case Direction.West:
-                    Banner.ItemID = ShipBanner.BannerIDs[2][type]; break;
+                Banner.ItemID = ShipBanner.BannerIDs[2][type];
+                break;
                 case Direction.East:
-                    Banner.ItemID = ShipBanner.BannerIDs[1][type]; break;
+                Banner.ItemID = ShipBanner.BannerIDs[1][type];
+                break;
 
             }
         }
 
         public void AutoAddCannons(Mobile captain)
         {
-            bool heavy = Utility.RandomBool();
+            var heavy = Utility.RandomBool();
 
-            for ( int i = 0; i < MaxCannons; i++)
+            for (var i = 0; i < MaxCannons; i++)
             {
                 INewShipCannon cannon;
 
@@ -530,11 +611,15 @@ namespace Server.Multis
         {
 
             if (Name != null)
+            {
                 list.Add(Name);
+            }
             else
+            {
                 list.Add(GetTypeName());
+            }
 
-            int health = (int)(Hits * 100 / MaxHits);
+            var health = Hits * 100 / MaxHits;
 
             if (health >= 75)
             {
@@ -558,22 +643,24 @@ namespace Server.Multis
 
         public string GetTypeName()
         {
-            string name = "";
-            char[] chars = new char[GetType().Name.Length];
-            for(int i = 0; i <  chars.Length; i++)
+            var name = "";
+            var chars = new char[GetType().Name.Length];
+            for (var i = 0; i < chars.Length; i++)
             {
                 chars[i] = GetType().Name[i];
             }
 
-            for (int j = 0; j < chars.Length; j++)
+            for (var j = 0; j < chars.Length; j++)
             {
-                if (Char.IsUpper(chars[j]) && j != 0)
+                if (char.IsUpper(chars[j]) && j != 0)
                 {
 
                     name += " " + chars[j];
                 }
                 else
+                {
                     name += chars[j];
+                }
             }
 
             return name;
@@ -583,7 +670,9 @@ namespace Server.Multis
         public override TimeSpan GetMovementInterval(bool fast, bool drifting, out int clientSpeed)
         {
             if (DamageTaken < DamageLevel.Heavily)
+            {
                 return base.GetMovementInterval(fast, drifting, out clientSpeed);
+            }
 
             if (fast)
             {
@@ -598,24 +687,30 @@ namespace Server.Multis
         #region Static Methods
         public static BaseShip FindShipAt(IPoint2D pnt, Map map)
         {
-            BaseBoat boat = FindBoatAt(pnt, map);
+            var boat = FindBoatAt(pnt, map);
 
             if (boat is BaseShip)
+            {
                 return boat as BaseShip;
+            }
 
             return null;
         }
-        
+
         public static bool CheckForBoat(IPoint3D p, Mobile caster)
         {
-            BaseBoat boat = FindBoatAt(caster, caster.Map);
-            BaseShip ship = FindShipAt(p, caster.Map);
+            _ = FindBoatAt(caster, caster.Map);
+            var ship = FindShipAt(p, caster.Map);
 
             if (ship == null || caster.AccessLevel > AccessLevel.Player)
+            {
                 return false;
+            }
 
             if (ship.Scuttled || ship.GetSecurityLevel(caster) >= SecurityLevel.Crewman)
+            {
                 return false;
+            }
 
             return true;
         }
@@ -633,24 +728,27 @@ namespace Server.Multis
         public static bool IsNearLand(BaseBoat boat, int range)
         {
             if (boat == null || boat.Map == null || boat.Map.Tiles == null)
-                return false;
-
-            Map map = boat.Map;
-
-
-            for (int x = boat.X - range; x <= boat.X + range; x++)
             {
-                for (int y = boat.Y - range; y <= boat.Y + range; y++)
-                {
-                    LandTile lt = map.Tiles.GetLandTile(x, y);
+                return false;
+            }
 
-                    
-                    TileFlag landFlags = TileData.LandTable[lt.ID & TileData.MaxLandValue].Flags;
+            var map = boat.Map;
+
+            for (var x = boat.X - range; x <= boat.X + range; x++)
+            {
+                for (var y = boat.Y - range; y <= boat.Y + range; y++)
+                {
+                    var lt = map.Tiles.GetLandTile(x, y);
+
+                    var landFlags = TileData.LandTable[lt.ID & TileData.MaxLandValue].Flags;
 
                     if ((landFlags & TileFlag.Impassable) == 0)
+                    {
                         return true;
+                    }
                 }
             }
+
             return false;
         }
 
@@ -662,25 +760,30 @@ namespace Server.Multis
         public static bool IsNearDocks(BaseBoat boat, int range)
         {
             if (boat == null)
-                return false;
-
-            Map map = boat.Map;
-
-            for (int x = boat.X - range; x <= boat.X + range; x++)
             {
-                for (int y = boat.Y - range; y <= boat.Y + range; y++)
-                {
-                    StaticTile[] staticTiles = map.Tiles.GetStaticTiles(x, y, true);
+                return false;
+            }
 
-                    for (int i = 0; i < staticTiles.Length; i++)
+            var map = boat.Map;
+
+            for (var x = boat.X - range; x <= boat.X + range; x++)
+            {
+                for (var y = boat.Y - range; y <= boat.Y + range; y++)
+                {
+                    var staticTiles = map.Tiles.GetStaticTiles(x, y, true);
+
+                    for (var i = 0; i < staticTiles.Length; i++)
                     {
-                        ItemData id = TileData.ItemTable[staticTiles[i].ID & TileData.MaxItemValue];
+                        var id = TileData.ItemTable[staticTiles[i].ID & TileData.MaxItemValue];
 
                         if (id.Name != null && (id.Name.ToLower() == "wooden plank" || id.Name.ToLower() == "pier"))
+                        {
                             return true;
+                        }
                     }
                 }
             }
+
             return false;
         }
         #endregion
@@ -697,14 +800,15 @@ namespace Server.Multis
 
         public override void OnDelete()
         {
-            
+
             if (Cannons != null)
             {
-                for (int i = 0; i < Cannons.Count; i++)
+                for (var i = 0; i < Cannons.Count; i++)
                 {
                     if (Cannons[i] != null || !Cannons[i].Deleted)
+                    {
                         Cannons[i].Delete();
-
+                    }
                 }
             }
 
@@ -718,10 +822,12 @@ namespace Server.Multis
 
             if (Cannons != null)
             {
-                for (int i = 0; i < Cannons.Count; i++)
+                for (var i = 0; i < Cannons.Count; i++)
                 {
                     if (Cannons[i] != null || !Cannons[i].Deleted)
+                    {
                         Cannons[i].Delete();
+                    }
                 }
             }
         }
@@ -732,14 +838,18 @@ namespace Server.Multis
 
         public void Sink()
         {
-            Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 4, () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(0.5), 4, () =>
             {
-                this.Z -= 2;
+                Z -= 2;
                 if (TillerMan != null)
+                {
                     ((Item)TillerMan).Z -= 2;
+                }
 
                 if (Hold != null)
-                    ((Item)Hold).Z -= 2;
+                {
+                    Hold.Z -= 2;
+                }
             });
 
             IPooledEnumerable eable = GetMobilesInRange(20);
@@ -748,15 +858,20 @@ namespace Server.Multis
             {
                 m.PlaySound(0x020);
 
-                if (this.Contains(m))
+                if (Contains(m))
+                {
                     m.Kill();
+                }
 
-                if (m is PlayerMobile && !m.Alive) 
+                if (m is PlayerMobile && !m.Alive)
+                {
                     GhostsOnTheWater.GetPlayer(m);
+                }
             }
+
             eable.Free();
 
-            Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
+            _ = Timer.DelayCall(TimeSpan.FromSeconds(3.0), () =>
             {
                 CleanUp();
             });
@@ -764,40 +879,55 @@ namespace Server.Multis
 
         public void CleanUp()
         {
-            IPooledEnumerable eable = GetItemsInRange(6);
-            List<Item > list = new List<Item>();
-            foreach(Item item in eable)
+            var eable = GetItemsInRange(6);
+
+            foreach (var item in eable)
             {
-                if (item is NewShipCannon)
+                if (item is NewShipCannon cannon)
                 {
-                    NewShipCannon cannon = (NewShipCannon)item;
                     if (cannon != null && (cannon.Ship == null || cannon.Ship.Owner is BaseCreature))
-                        list.Add(cannon);
+                    {
+                        cannon.Delete();
+                    }
                 }
-
-                if (item is Corpse && ((Corpse)item).Owner is BaseCreature)
-                    list.Add(item);
+                else if (item is Corpse c && c.Owner is BaseCreature)
+                {
+                    c.Delete();
+                }
             }
 
-            for(int i = 0; i < list.Count; i++)
-            {
-                list[i].Delete();
-            }
+            eable.Free();
 
             Delete();
+        }
+
+        private ShipRemovalTimer rTimer;
+        public override void OnTakenDamage(Mobile damager, int damage)
+        {
+            base.OnTakenDamage(damager, damage);
+
+            /*
+            if (rTimer == null && Scuttled)
+            {
+                rTimer = new ShipRemovalTimer(this);
+                rTimer.Start();
+            }
+            */
         }
 
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write((int)0);
+            writer.Write(0);
 
             writer.Write(Cannons != null ? Cannons.Count : 0);
 
             if (Cannons != null)
             {
-                for (int i = 0; i < Cannons.Count; i++)
+                for (var i = 0; i < Cannons.Count; i++)
+                {
                     writer.Write(Cannons[i]);
+                }
             }
 
             SecurityEntry.Serialize(writer);
@@ -814,15 +944,18 @@ namespace Server.Multis
         public override void Deserialize(GenericReader reader)
         {
             base.Deserialize(reader);
-            int version = reader.ReadInt();
+
+            _ = reader.ReadInt();
 
             int count;
             count = reader.ReadInt();
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
-                Item cannon = reader.ReadItem();
+                var cannon = reader.ReadItem();
                 if (cannon != null && !cannon.Deleted)
+                {
                     AddCannon(cannon);
+                }
             }
 
             m_SecurityEntry = new ShipSecurityEntry(this, reader);
@@ -833,6 +966,51 @@ namespace Server.Multis
             UpgradedHull = reader.ReadBool();
             BannerUpgrade = reader.ReadBool();
             Banner = reader.ReadItem() as ShipBanner;
+
+            if (Owner == null || (Owner is BaseCreature && !Owner.Alive))
+            {
+                ShipSinkTimer t = new ShipSinkTimer(this);
+                t.Start();
+            }
+
+            if (UpgradedHold)
+                Hold?.Upgrade();
+            /*
+            if (rTimer == null && Scuttled)
+            {
+                rTimer = new ShipRemovalTimer(this);
+                rTimer.Start();
+            }
+            */
+        }
+
+        private class ShipRemovalTimer : Timer
+        {
+            private BaseShip m_Ship;
+            
+            public ShipRemovalTimer(BaseShip ship)
+                : base(TimeSpan.FromHours(6))
+            {
+                m_Ship = ship;
+            }
+
+            protected override void OnTick()
+            {
+                if (m_Ship == null)
+                {
+                    Stop();                    
+                    return;
+                }
+                
+                if (m_Ship.Deleted || !m_Ship.Scuttled)
+                {
+                    Stop();                    
+                    m_Ship.rTimer = null;                    
+                    return;
+                }
+
+                BoatScrapper.InteralizeBoat(m_Ship);
+            }
         }
     }
 }
